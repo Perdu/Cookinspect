@@ -1,0 +1,10 @@
+cookinspect.conf
+cookinspect_ac.conf
+cookinspect_prod.conf
+geckodriver.log
+__pycache__/
+TAGS
+*.crx
+*.pem
+understand-cookie-banners
+todo.csv

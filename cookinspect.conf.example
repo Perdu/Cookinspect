@@ -1,0 +1,5 @@
+[Database]
+db_name = cookinspect
+db_server = localhost
+db_user = cookinspect
+db_pass = 

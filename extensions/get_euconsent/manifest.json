@@ -1,0 +1,36 @@
+{
+
+  "manifest_version": 2,
+  "name": "Get euconsent cookie",
+  "version": "1.0",
+    "author": "Célestin Matte",
+  "description": "Extension writing the value of the euconsent shared cookie (.consensu.org domain) to console, to get it from selenium.",
+
+    "permissions": [
+	"activeTab",
+	"cookies",
+	"<all_urls>"
+    ],
+
+  "content_scripts": [
+    {
+        "matches": [ "<all_urls>" ],
+        "js": ["content_scripts/dump_euconsent.js"] ,
+        "run_at": "document_start",
+        "all_frames": false
+    }
+  ],
+
+    "background": {
+        "scripts": ["get_cookie.js"]
+    },
+
+    "browser_action": {
+	"default_icon": {
+	    "19": "button/19.png",
+	    "38": "button/38.png"
+	},
+	"default_title": "Understand",
+	"default_popup": "popup/ucookie.html"
+    }
+}

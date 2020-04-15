@@ -1,0 +1,30 @@
+{
+
+  "manifest_version": 2,
+  "name": "Override __cmp()",
+  "version": "1.0",
+    "author": "Célestin Matte",
+  "description": "Extension overriding __cmp() to study vendors interactions with the CMP.",
+
+    "permissions": [
+	"activeTab",
+	"storage"
+    ],
+
+  "content_scripts": [
+    {
+        "matches": [ "*://*/*" ],
+        "js": ["content_scripts/override_cmp.js"] ,
+        "run_at": "document_start"
+    }
+  ],
+
+    "browser_action": {
+	"default_icon": {
+	    "19": "button/19.png",
+	    "38": "button/38.png"
+	},
+	"default_title": "Understand",
+	"default_popup": "popup/ucookie.html"
+    }
+}

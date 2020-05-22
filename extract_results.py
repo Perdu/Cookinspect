@@ -381,7 +381,7 @@ def dump_stats(used_tld=None, cmpid=None, others=False, unknown=False, all_capti
 
     if not args.quiet:
         print("\n** Violations")
-    v_preaction_consent_sure, p_v_preaction_consent_sure = disp(query_preaction_consent_sure + acond, "Violation: pre-action consent (= non respect of choice) (sure only)", nb_domains_iab)
+    v_preaction_consent_sure, p_v_preaction_consent_sure = disp(query_preaction_consent_sure + acond, "Violation: pre-action consent (= consent stored before choice) (sure only)", nb_domains_iab)
     if not args.quiet:
         disp("SELECT count(domain) FROM website WHERE preaction_n0 = True AND preaction_n1 is Null AND preaction_n2 is Null AND preaction_n3 is Null" + acond, "preaction n0 (no purpose, no vendor)", nb_domains_iab)
         disp("SELECT count(domain) FROM website WHERE preaction_n1 = True AND preaction_n2 is Null AND preaction_n3 is Null" + acond, "preaction n1 (no purpose, vendors)", nb_domains_iab)

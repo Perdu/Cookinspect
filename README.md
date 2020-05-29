@@ -18,6 +18,7 @@ Author: Célestin Matte (Université Côte d'Azur, Inria, France)
 - chromium-chromedriver (ubuntu)
 - psycogs2 (ubuntu)
 - consent-string (nodejs package)
+- wget (to download vendorlists)
 
 ## Install procedure
 
@@ -35,6 +36,16 @@ $ psql cookinspect
 
 ### Configuration
 - copy cookinspect.conf.example to cookinspect.conf and modify it according to your database configuration.
+
+### Vendor lists
+In order to detect violations, you need to download all vendor lists from IAB. Fortunately, there is a script that does that automatically.
+
+```bash
+cd vendorlist
+./download.sh
+```
+
+IAB produces a new vendor list every week, so you need to launch this script again if you reuse cookinspect and it crashes because the latest vendorlist is not found.
 
 ### Consent string decoding
 (Unnecessary if you don't decode consent strings, e.g. if you only want to detect the presence of banners)

@@ -82,6 +82,6 @@ def decode_consent_string(consent_string):
     return json.loads(out)
 
 def get_vendor_list(vendorlist_id=163):
-    with open('../../datasets/vendor_list/vendorlist_%d.json' % int(vendorlist_id)) as json_file:
+    with open('vendorlist/vendorlist_%d.json' % int(vendorlist_id)) as json_file:
         vendorlist = json.load(json_file)
         return vendorlist

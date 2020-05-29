@@ -8,3 +8,5 @@ TAGS
 *.pem
 understand-cookie-banners
 todo.csv
+vendorlist/vendorlist_*.json
+vendorlist/v2/

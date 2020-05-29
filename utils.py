@@ -74,7 +74,7 @@ def import_iab_cmp_list(short_names=False):
     return CMP
 
 def decode_consent_string(consent_string):
-    proc = subprocess.Popen(['node', '../decode_IAB_API_strings/decode_IAB_API_strings.js' , consent_string], stdout=subprocess.PIPE)
+    proc = subprocess.Popen(['node', 'decode_IAB_API_strings.js' , consent_string], stdout=subprocess.PIPE)
     (out, err) = proc.communicate()
     if proc.returncode != 0:
         print("Unable to decode consent string.")

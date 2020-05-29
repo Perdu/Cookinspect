@@ -10,3 +10,5 @@ understand-cookie-banners
 todo.csv
 vendorlist/vendorlist_*.json
 vendorlist/v2/
+node_modules/
+package-lock.json

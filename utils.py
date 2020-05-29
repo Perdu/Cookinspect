@@ -59,9 +59,9 @@ def quit_properly(browser):
 def import_iab_cmp_list(short_names=False):
     CMP = {}
     if short_names:
-        f = "../../datasets/cmps/IAB_CMP_list_full.csv"
+        f = "cmplist/IAB_CMP_list_full.csv"
     else:
-        f = '../../datasets/cmps/IAB_CMP_list_full_fullnames.csv'
+        f = 'cmplist/IAB_CMP_list_full_fullnames.csv'
     reader = csv.reader(open(f, 'r'))
     first_line = True
     for row in reader:

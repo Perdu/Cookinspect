@@ -35,7 +35,7 @@ $ psql cookinspect
 ```
 
 ### Configuration
-- copy cookinspect.conf.example to cookinspect.conf and modify it according to your database configuration.
+- copy `cookinspect.conf.example` to `cookinspect.conf` and modify it according to your database configuration.
 
 ### Vendor lists
 In order to detect violations, you need to download all vendor lists from IAB. Fortunately, there is a script that does that automatically.
@@ -81,3 +81,8 @@ It runs the automatic crawl by default.
 
 ### Security caution
 This tool takes a lot of inputs from the targeted website and has not been built with security in mind. Someone reading this code COULD exploit it. Please do not run outside a safe environment, e.g. at least a separate unix user having no right on your system.
+
+## Additional notes
+Stage: completed project (2019). TCFv2 support might be added later.
+
+This was an experimental single-developer research project. Direction changed several times during development, so please be very tolerant with code quality.

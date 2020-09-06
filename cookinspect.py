@@ -498,7 +498,8 @@ def dump_website(website):
         return
     if website.robot_txt_ban:
         print("Access refused by robots.txt.")
-        return
+        if not args.ignore_robots_txt:
+            return
     if website.iab_banner == False:
         print("Website does not use a TCF-related banner.")
         return

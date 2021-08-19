@@ -53,9 +53,12 @@ IAB produces a new vendor list every week, so you need to launch this script aga
 
 ### Consent string decoding
 (Unnecessary if you don't decode consent strings, e.g. if you only want to detect the presence of banners)
-Install IAB's consent string nodejs package:
+Install IAB's consent string nodejs packages:
 
-``npm install --save consent-string``
+```
+npm install --save consent-string
+npm install --save @iabtcf/core
+```
 
 ### Potential installs issue
 - You may need to add a password to your database user so that sqlalchemy lets you connect

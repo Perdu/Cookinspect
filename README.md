@@ -4,7 +4,7 @@ Selenium-based crawler used to find violations in cookie banners of IAB Europe's
 
 Update August 2021: TCFv2 support uploaded to this repository.
 
-~~ Update September 2020: CMPs switched to TCFv2 in August 2020. This script only handles TCFv1 and is therefore obsolete unless it's adapted to the new TCF version (contact me if interested). ~~
+~~Update September 2020: CMPs switched to TCFv2 in August 2020. This script only handles TCFv1 and is therefore obsolete unless it's adapted to the new TCF version (contact me if interested).~~
 
 ## Introduction
 

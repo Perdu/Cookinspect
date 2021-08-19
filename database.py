@@ -53,8 +53,10 @@ class Website(Base):
     iab_banner = Column(Boolean)
     iab_banner_cmplocator = Column(Boolean)
     tcfv2 = Column(Boolean)
+    iab_banner_tcfapilocator = Column(Boolean)
     cmpid = Column(Integer)
     cmp_code = Column(TEXT)
+    tcfapi_code = Column(TEXT)
     # for all consent_set violations:
     # - 1 = undoubtful violation
     # - 2 = doubtful violation (no purpose is set but vendors are)
@@ -118,10 +120,13 @@ class Website(Base):
     non_trackers_after_refusal = Column(ARRAY(String(256)))
     non_trackers_after_acceptance = Column(ARRAY(String(256)))
     consent_strings = Column(ARRAY(String(256))) # should be ok with current number of vendors, but no max length is specified
+    consent_strings_v2 = Column(ARRAY(TEXT))
     nothing_found_after_manual_validation = Column(Boolean) # in case semi-automatic check finds nothing
     # sorted by origin, not stored in db (unlike above field)
     seen_consent_strings = {"direct": set(), "postmessage": set(), "GET": set(), "POST": set(), "cookie": set()}
+    seen_consent_strings_v2 = {"direct": set(), "postmessage": set(), "GET": set(), "POST": set(), "cookie": set()}
     pickled_consent_strings = Column(LargeBinary)
+    pickled_consent_strings_v2 = Column(LargeBinary)
     violation_gdpr_does_not_apply_this_session = False # for printing
     http_only = Column(Boolean)
     unknown_consent_checks = Column(Integer)
@@ -156,6 +161,7 @@ class Website(Base):
         self.non_trackers_after_refusal = set()
         self.non_trackers_after_acceptance = set()
         self.consent_strings = set()
+        self.consent_strings_v2 = set()
         self.unknown_consent_checks = 0
         self.main_page_url = ""
         self.violation_no_option = False

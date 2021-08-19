@@ -67,6 +67,7 @@ def parse_command_line():
     other.add_argument('--retry', action='store_const', const=True, help='Retry website for which access was not successful (in combination with --new-only).')
 
     args = parser.parse_args()
+    return args
 
 def get_main_page(url):
     parsed_url = urlparse(url)
@@ -225,6 +226,8 @@ def start_browser_and_fetch(website, args):
             return browser
         except TimeoutException:
             print("Website timed out.")
+        except WebDriverException:
+            print("WebDriver Error.")
     quit_properly(browser)
     website.access_successful = False
     return None
@@ -255,15 +258,17 @@ def start_new_browser_and_fetch(website, args, ignore_robots_txt=False, add_shar
     browser = start_browser_and_fetch(website, args2)
     return browser
 
-def get_website(domain):
+def get_website(domain, db):
     website = db.query(Website).filter_by(domain=domain).scalar()
     if website and website.pickled_consent_strings is not None:
         website.seen_consent_strings = pickle.loads(website.pickled_consent_strings)
+    if website and website.pickled_consent_strings_v2 is not None:
+        website.seen_consent_strings_v2 = pickle.loads(website.pickled_consent_strings_v2)
     return website
 
 def create_website_or_return_existing_one(url):
     domain = get_domain(url, subdomain=True)
-    website = get_website(domain)
+    website = get_website(domain, db)
     new = True
     if website is None:
         website = Website(domain)
@@ -295,6 +300,7 @@ def last_checks(website, semi_automatic=False):
         last_checks_consent_strings(website)
     store_consent_strings(website)
     website.pickled_consent_strings = pickle.dumps(website.seen_consent_strings)
+    website.pickled_consent_strings_v2 = pickle.dumps(website.seen_consent_strings_v2)
     if semi_automatic and len(website.consent_strings) == 0:
         # still nothing found
         # Test case: ebay.fr
@@ -306,7 +312,8 @@ def last_checks_consent_strings(website):
     # - Positive: todo
     # - Negative: lepoint.fr
     all_strings = website.seen_consent_strings["postmessage"] | website.seen_consent_strings["GET"] | website.seen_consent_strings["POST"] | website.seen_consent_strings["cookie"]
-    if len(all_strings) > 1:
+    all_strings_v2 = website.seen_consent_strings_v2["postmessage"] | website.seen_consent_strings_v2["GET"] | website.seen_consent_strings_v2["POST"] | website.seen_consent_strings_v2["cookie"]
+    if len(all_strings) > 1 or len(all_strings_v2) > 1:
         print("Found several consent strings", all_strings)
         website.different_consent_strings = True
     else:
@@ -320,6 +327,10 @@ def store_consent_strings(website):
                 # Example: virgilio.it
             else:
                 website.consent_strings = set(website.consent_strings).union(set([consent_string]))
+    # TCFv2
+    for origin in website.seen_consent_strings_v2:
+        for consent_string in website.seen_consent_strings_v2[origin]:
+            website.consent_strings_v2 = set(website.consent_strings_v2).union(set([consent_string]))
 
 def full_violations_check(website):
     ok = automatic_violations_check(website)
@@ -337,9 +348,13 @@ def test_if_website_uses_cmp_only(website):
     # Wait for __cmp to be loaded
     time.sleep(SLEEP_TIME_CMP_WAIT)
     uses_cmp = verify___cmp_exists(browser, website)
+    print("Checking presence of __tcfapi()...")
+    website.tcfv2 = verify___tcfapi_exists(browser, website)
     website.iab_banner = uses_cmp
     if (uses_cmp):
         print("__cmp() found.")
+    if (website.tcfv2):
+        print("__tcfapi() found.")
     quit_properly(browser)
 
 def automatic_violations_check_full(website):
@@ -361,9 +376,12 @@ def automatic_violations_check_full(website):
     cmplocator_found = verify___cmplocator_exists(browser, website)
     if cmplocator_found:
         website.iab_banner_cmplocator = True
+    tcfapilocator_found = verify___tcfapilocator_exists(browser, website)
+    if tcfapilocator_found:
+        website.iab_banner_tcfapilocator = True
     print("Checking presence of __tcfapi()...")
     website.tcfv2 = verify___tcfapi_exists(browser, website)
-    if not uses_cmp:
+    if not uses_cmp and not website.tcfv2:
         quit_properly(browser)
         return False
     website.cmp_code = get___cmp_code(browser)
@@ -374,7 +392,10 @@ def automatic_violations_check_full(website):
     browser = start_new_browser_and_fetch(website, args, ignore_robots_txt=True, add_shared_cookie=True, headful=True, probe_cmp_postmessage=True)
     if browser is None:
         return False
-    check_violation_shared_consent(browser, website, args)
+    if uses_cmp:
+        check_violation_shared_consent(browser, website, args)
+    if website.tcfv2:
+        check_violation_shared_consent(browser, website, args, v2=True)
     quit_properly(browser)
     print("Checking vendors...")
     browser = start_new_browser_and_fetch(website, args, ignore_robots_txt=True, override_cmp=True)
@@ -405,22 +426,32 @@ def automatic_violations_check(website):
     print("Checking presence of __cmp()...")
     # Wait for __cmp to be loaded
     time.sleep(SLEEP_TIME_CMP_WAIT)
-    uses_cmp = verify___cmp_exists(browser, website)
-    website.iab_banner = uses_cmp
+    tcfv1 = verify___cmp_exists(browser, website)
+    website.iab_banner = tcfv1
     print("Checking presence of the __cmpLocator iframe...")
     cmplocator_found = verify___cmplocator_exists(browser, website)
     if cmplocator_found:
         website.iab_banner_cmplocator = True
+    tcfapilocator_found = verify___tcfapilocator_exists(browser, website)
+    if tcfapilocator_found:
+        website.iab_banner_tcfapilocator = True
     print("Checking presence of __tcfapi()...")
-    website.tcfv2 = verify___tcfapi_exists(browser, website)
-    if not uses_cmp:
+    tcfv2 = verify___tcfapi_exists(browser, website)
+    website.tcfv2 = tcfv2
+    if not tcfv1 and not tcfv2:
         quit_properly(browser)
         return False
-    website.cmp_code = get___cmp_code(browser)
+    if tcfv1:
+        website.cmp_code = get___cmp_code(browser)
+    if tcfv2:
+        website.tcfapi_code = get___tcfapi_code(browser)
     print("Starting automatic checks...")
     automatic_violations_check_no_extension(browser, website, args) # automatic, without extension
     # adds domains checking and not checking consent to domains
-    vendors_passive_violations_check(browser, website, {"direct": set()}) # automatic, with monitor_postmessages and watch_requests extension
+    if website.tcfv2:
+        vendors_passive_violations_check(browser, website, {"direct": set()}, v2=True) # automatic, with monitor_post
+    if website.iab_banner: # might bug if tcfv2 was done before because get_through_logs_for_violations() must read logs all at once
+        vendors_passive_violations_check(browser, website, {"direct": set()}) # automatic, with monitor_postmessages and watch_requests extension messages and watch_requests extension
     quit_properly(browser)
     return True
 
@@ -444,7 +475,10 @@ def semi_automatic_violations_check(website):
         website.current_state = AFTER_REFUSAL
         # if user can't refuse consent, the "non-respect of decision" violation has no meaning
         # adds domains checking consent to domains
-        post_reload_violations_check(browser, website)
+        if website.tcfv2:
+            post_reload_violations_check(browser, website, v2=True)
+        if website.iab_banner:
+            post_reload_violations_check(browser, website)
     quit_properly(browser)
     if website.violation_no_option or website.violation_no_banner or website.violation_broken_banner:
         # nothing left to do
@@ -498,9 +532,9 @@ def dump_website(website):
         return
     if website.robot_txt_ban:
         print("Access refused by robots.txt.")
-        if not args.ignore_robots_txt:
+        if not args.ignore_robots_txt and not args.dump:
             return
-    if website.iab_banner == False:
+    if website.iab_banner == False and website.tcfv2 == False:
         print("Website does not use a TCF-related banner.")
         return
     if website.tcfv2:
@@ -559,16 +593,21 @@ def dump_website(website):
     #                                                            xa(website.violation_vendor_4_get),
     #                                                            xa(website.violation_vendor_4_post)))
     print("+-------------------------------------------+")
-    if len(website.consent_strings) > 0:
+    if len(website.consent_strings) > 0 or len(website.consent_strings_v2) > 0:
         print("Consent strings:")
         for origin in website.seen_consent_strings:
             if len(website.seen_consent_strings[origin]) > 0:
                 print("%s:" % origin)
                 for consent_string in website.seen_consent_strings[origin]:
                     print(consent_string)
+        for origin in website.seen_consent_strings_v2:
+            if len(website.seen_consent_strings_v2[origin]) > 0:
+                print("%s (TCFv2):" % origin)
+                for consent_string in website.seen_consent_strings_v2[origin]:
+                    print(consent_string)
     elif website.nothing_found_after_manual_validation:
         print("No consent string found, even after manual validation.")
-    if website.semi_automatic_done and len(website.seen_consent_strings["direct"]) == 0:
+    if website.semi_automatic_done and len(website.seen_consent_strings["direct"]) == 0 and len(website.seen_consent_strings_v2["direct"]) == 0:
         print("Calls to __cmp() never return anything.")
 
 def get_vendor_in_vendorlist(vendorlist, vendor_id):
@@ -582,7 +621,7 @@ def find_legint_ambiguous_cmps_ac():
     # You have to run it on a website having preaction_n3 for each CMP
     # ex: select domain from website where preaction_n3 and cmpid=187;
     domain = get_domain(args.url, subdomain=True)
-    website = get_website(domain)
+    website = get_website(domain, db)
     print("-- Trying website: %s" % domain)
     correct = False
     for origin in website.seen_consent_strings:
@@ -606,7 +645,7 @@ def main():
     if args.dump is not None:
         db = start_db()
         domain = get_domain(args.url, subdomain=True)
-        website = get_website(domain)
+        website = get_website(domain, db)
         if website is None:
             print("Website not found.")
         else:

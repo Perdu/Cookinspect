@@ -28,13 +28,16 @@ from identify_vendor import Webxray_database, Disconnect_database, Vendorlist_da
 #re_consent_string = re.compile("consentData")
 re_consent_string = re.compile('"sc-consentData=" "(.*)"')
 re_consent_string2 = re.compile('"sc-metadata-vendorConsents=" "(.*)"')
+re_consent_string_v2 = re.compile('"sc-TCData=" "(.*)"')
 re_cmp_id = re.compile('"cmpId=" "(.*)"')
 # script file checking consent via postmessage caught by override-cmp
 re_script_file = re.compile('sc-script-file: (.*?):\d+')
 re_postmessage = re.compile('sc-postMessage: *(.*?)" ')
 re_requests = re.compile('sc-requests: *(.*?)"( "POST" "(.*)")?')
 re_euconsent = re.compile('"sc-cookie:" "(.*)"')
+re_euconsent_v2 = re.compile('"sc-cookie-v2:" "(.*)"')
 re_consent_string_postmessage = re.compile('"sc-probe-cmp-consentData:" "(.*)"')
+re_consent_string_postmessage_v2 = re.compile('"sc-probe-cmp-TCData:" "(.*)"')
 re_consent_string_postmessage2 = re.compile('"sc-probe-cmp-vendorConsents:" "(.*)"')
 
 def call_cmp_to_get_consent_string(browser):
@@ -45,8 +48,19 @@ def call_cmp_to_get_consent_string(browser):
     except TimeoutException as e:
         print("Timeout exception while calling __cmp(): %s" % e)
 
+def call_tcfapi_to_get_consent_string(browser):
+    try:
+        browser.execute_script('__tcfapi("getTCData", 2, function(val, success) { console.log("sc-TCData=",val.tcString);});', None)
+    except JavascriptException as e:
+        print("Exception while calling __tcfapi(): %s" % e)
+    except TimeoutException as e:
+        print("Timeout exception while calling __tcfapi(): %s" % e)
+
 def get___cmp_code(browser):
     return browser.execute_script('return String(__cmp);', None)
+
+def get___tcfapi_code(browser):
+    return browser.execute_script('return String(__tcfapi);', None)
 
 def verify___cmp_exists(browser, website):
     # return False if publisher does not contain a __cmp() function
@@ -111,6 +125,27 @@ def verify___cmplocator_exists(browser, website):
         return True
     return False
 
+def verify___tcfapilocator_exists(browser, website):
+    # return False if publisher does not contain a __cmp() function
+    try:
+        res = browser.execute_script('return document.getElementsByName("__tcfapiLocator").length;')
+    except JavascriptException as e:
+        print('__tcfapiLocator not found: ', e)
+        return False
+    except TimeoutException:
+        print("Timeout while looking for __tcfappiLocator.")
+        return False
+    except UnexpectedAlertPresentException as e:
+        print("Issue: alert opened when looking for __tcfapiLocator. Cannot do anything. Text: %s" % e)
+        #website.access_successful = False
+        return False
+    except (RemoteDisconnected, ProtocolError):
+        print("RemoteDisconnected/ProtocolError exception while looking for __tcfapiLocator")
+        return False
+    if int(res) > 0:
+        return True
+    return False
+
 def get_info(entry, used_re, display_string):
     matches = used_re.search(str(entry["message"]))
     if matches is not None:
@@ -132,7 +167,7 @@ def get_info_multiple(entry, used_re, display_string):
         return res
     return None
 
-def get_consent_string(browser, website, normal=False, logs=None):
+def get_consent_string(browser, website, normal=False, logs=None, v2=False):
     # First arg returns consent string with a direct (first-party) call to __cmp()
     # second arg is a set of consent strings obtained through a 3rd party call
     # Test cases:
@@ -144,18 +179,29 @@ def get_consent_string(browser, website, normal=False, logs=None):
     consent_strings_postmessage2 = set()
     if logs == None:
         # going through existing logs (call_cmp_to_get_consent_string() must be called before)
-        call_cmp_to_get_consent_string(browser)
+        if not v2:
+            call_cmp_to_get_consent_string(browser)
+        else:
+            call_tcfapi_to_get_consent_string(browser)
         logs = browser.get_log('browser')
     for entry in logs:
         if consent_string is None:
-            consent_string = get_info(entry, re_consent_string, "Consent string")
+            if not v2:
+                used_re = re_consent_string
+            else:
+                used_re = re_consent_string_v2
+            consent_string = get_info(entry, used_re, "Consent string")
             if consent_string == "": # prevent crash if __cmp returns a null consent string
                 consent_string = None
         if consent_string2 is None:
             consent_string2 = get_info(entry, re_consent_string2, "Consent string (vendorConsents)")
             if consent_string2 == "":
                 consent_string2 = None
-        consent_string_postmessage = get_info(entry, re_consent_string_postmessage, "Consent string (postmessage)")
+        if not v2:
+            used_re = re_consent_string_postmessage
+        else:
+            used_re = re_consent_string_postmessage_v2
+        consent_string_postmessage = get_info(entry, used_re, "Consent string (postmessage)")
         if consent_string_postmessage == "":
             consent_string_postmessage = None
         consent_string_postmessage2 = get_info(entry, re_consent_string_postmessage2, "Consent string (postmessage, vendorConsents)")
@@ -170,22 +216,34 @@ def get_consent_string(browser, website, normal=False, logs=None):
             print("Consent string not found (this is normal)")
         else:
             print("Consent string not found")
-    check_vendorconsents_difference(website, consent_string, consent_string2, consent_strings_postmessage, consent_strings_postmessage2)
+    check_vendorconsents_difference(website, consent_string, consent_string2, consent_strings_postmessage, consent_strings_postmessage2, v2=v2)
     return consent_string, consent_strings_postmessage
 
-def check_vendorconsents_difference(website, consent_string, consent_string2, consent_strings_postmessage, consent_strings_postmessage2):
+def count_nb_purposes(decoded_consent_string, v2=False):
+    if not v2:
+        return len(decoded_consent_string["allowedPurposeIds"])
+    else:
+        return int(decoded_consent_string["purposeConsents"]["maxId_"])
+
+def count_nb_vendors(decoded_consent_string, v2=False):
+    if not v2:
+        return len(decoded_consent_string["allowedVendorIds"])
+    else:
+        return int(decoded_consent_string["vendorConsents"]["maxId_"])
+
+def check_vendorconsents_difference(website, consent_string, consent_string2, consent_strings_postmessage, consent_strings_postmessage2, v2=False):
     if consent_string2 != consent_string:
         print("**** Found 2 different consent strings. VendorConsents consent string: %s" % consent_string2)
         if consent_string is None and consent_string2 is not None:
             print("VendorConsents: only vendorConsents string is not None (site: %s)" % website.domain)
         if consent_string is not None:
-            decoded_consent_string = decode_consent_string(consent_string)
-            nb_purposes = len(decoded_consent_string["allowedPurposeIds"])
+            decoded_consent_string = decode_consent_string(consent_string, v2=v2)
+            nb_purposes = count_nb_purposes(decoded_consent_string, v2=v2)
         else:
             nb_purposes = 0
         if consent_string2 is not None:
-            decoded_consent_string2 = decode_consent_string(consent_string2)
-            nb_purposes2 = len(decoded_consent_string2["allowedPurposeIds"])
+            decoded_consent_string2 = decode_consent_string(consent_string2, v2=v2)
+            nb_purposes2 = count_nb_purposes(decoded_consent_string2, v2=v2)
             print(decoded_consent_string2)
         else:
             nb_purposes2 = 0
@@ -199,13 +257,13 @@ def check_vendorconsents_difference(website, consent_string, consent_string2, co
         worst_case_postmessage = 0
         worst_case_postmessage2 = 0
         for consent_string in consent_strings_postmessage:
-            decoded_consent_string = decode_consent_string(consent_string)
-            nb_purposes = len(decoded_consent_string["allowedPurposeIds"])
+            decoded_consent_string = decode_consent_string(consent_string, v2=v2)
+            nb_purposes = count_nb_purposes(decoded_consent_string, v2=v2)
             if nb_purposes > worst_case_postmessage:
                 worst_case_postmessage = nb_purposes
         for consent_string in consent_strings_postmessage2:
-            decoded_consent_string = decode_consent_string(consent_string)
-            nb_purposes = len(decoded_consent_string["allowedPurposeIds"])
+            decoded_consent_string = decode_consent_string(consent_string, v2=v2)
+            nb_purposes = count_nb_purposes(decoded_consent_string, v2=v2)
             if nb_purposes > worst_case_postmessage2:
                 worst_case_postmessage2 = nb_purposes
         if worst_case_postmessage2 > worst_case_postmessage:
@@ -261,7 +319,7 @@ def set_consent_set_before_violation(website, origin, phrase, consent_string, vi
         elif nb_purposes < 5 and violation_level == 1:
             website.preaction_n2 = True
             sure = True
-        elif nb_purposes == 5 and violation_level == 1:
+        elif nb_purposes >= 5 and violation_level == 1:
             website.preaction_n3 = True
             sure = True
         if sure:
@@ -301,21 +359,21 @@ def set_consent_set_refusal_violation(website, origin, phrase, consent_string, v
             website.nonrespect_n1 = True
         elif nb_purposes < 5 and violation_level == 1:
             website.nonrespect_n2 = True
-        elif nb_purposes == 5 and violation_level == 1:
+        elif nb_purposes >= 5 and violation_level == 1:
             website.violation_consent_set_active_refusal_sure = True
             if origin == "cookie":
                 website.violation_consent_set_active_refusal_cookie_sure = True
     else:
-        if violation_level == 1 and nb_purposes == 5:
+        if violation_level == 1 and nb_purposes >= 5:
             website.violation_consent_set_active_refusal_queries_sure = True
 
-def check_violation_consent_set(website, consent_string, origin, before_user_action=False):
+def check_violation_consent_set(website, consent_string, origin, before_user_action=False, v2=False):
     # Test cases:
     # - consent set despite active refusal: www.doctissimo.fr
     # - consent set before user action: www.tpi.it (postmessage), lepoint.fr (URL-based)
     if consent_string is not None:
-        nb_vendors = len(consent_string["allowedVendorIds"])
-        nb_purposes = len(consent_string["allowedPurposeIds"])
+        nb_vendors = count_nb_vendors(consent_string, v2=v2)
+        nb_purposes = count_nb_purposes(consent_string, v2=v2)
         if before_user_action:
             phrase = "Consent set in consent string before any user action"
         else:
@@ -336,6 +394,7 @@ def check_violation_consent_set(website, consent_string, origin, before_user_act
             if nb_purposes > 0:
                 print("** Number of purposes: %s" % nb_purposes)
 
+# deactivated
 def check_violation_unregistered_vendors_in_consent_string(website, decoded_consent_string):
     # Test case: www.mycanal.fr (if you accept all)
     vendorlist_id = int(decoded_consent_string["vendorListVersion"])
@@ -518,12 +577,12 @@ def check_violation_vendors_1_3(website, domains_checking_consent, all_domains):
 #            violation = True
 #    website.violation_vendor_not_in_consent_string = violation
 
-def check_violation_shared_consent(browser, website, args):
+def check_violation_shared_consent(browser, website, args, v2=False):
     # Test case :
     # - Positive : altervista.org
     # - negative : lemonde.fr
     time.sleep(SLEEP_TIME_CMP_WAIT)
-    consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=True)
+    consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=True, v2=v2)
     violation = False
     if consent_string == CONSENT_STRING_SENSCRITIQUE:
         violation = True
@@ -534,24 +593,30 @@ def check_violation_shared_consent(browser, website, args):
         website.violation_shared_cookie = True
         print("Shared consent string obtained")
 
-def consent_string_violations(website, raw_consent_string, origin, before_user_action, tracking_accepted=False):
+def consent_string_violations(website, raw_consent_string, origin, before_user_action, tracking_accepted=False, v2=False, retry=False):
     if raw_consent_string is None:
         return
-    if raw_consent_string in website.seen_consent_strings[origin]:
+    if not retry and (raw_consent_string in website.seen_consent_strings[origin] or raw_consent_string in website.seen_consent_strings_v2[origin]):
         return
     print("Found new consent string (origin: %s): %s" % (origin, raw_consent_string))
-    consent_string = decode_consent_string(raw_consent_string)
+    consent_string = decode_consent_string(raw_consent_string, v2=v2)
     if consent_string is None:
         return
-    website.seen_consent_strings[origin].add(raw_consent_string)
+    if not v2:
+        website.seen_consent_strings[origin].add(raw_consent_string)
+    else:
+        website.seen_consent_strings_v2[origin].add(raw_consent_string)
     if not tracking_accepted and (before_user_action or (website.violation_no_option == False and website.violation_no_banner == False)):
         # if user can't refuse consent, the "non-respect of decision" violation has no meaning
-        check_violation_consent_set(website, consent_string, origin=origin, before_user_action=before_user_action)
-    check_violation_unregistered_vendors_in_consent_string(website, consent_string)
+        check_violation_consent_set(website, consent_string, origin=origin, before_user_action=before_user_action, v2=v2)
+    #check_violation_unregistered_vendors_in_consent_string(website, consent_string)
     # We don't look for CMP ID in GET and POST queries because these strings are not reliable
     if origin == "GET" or origin == "POST":
         return
-    cmp_id = int(consent_string["cmpId"])
+    if not v2:
+        cmp_id = int(consent_string["cmpId"])
+    else:
+        cmp_id = int(consent_string["cmpId_"])
     if website.cmpid is None:
         print("Found CMP ID: %d" % cmp_id)
         website.cmpid = cmp_id
@@ -582,30 +647,37 @@ def is_cmpid_correct_print_cmpname(cmp_id, new=True):
             print("Incorrect CMP id set in consent string: %d" % cmp_id)
         return False
 
-def get_decoded_consent_string(browser, website, normal=False):
-    # This function is just for iab_data_collection (might be removed)
-    consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal)
-    if consent_string is None:
-        return None
-    else:
-        return decode_consent_string(consent_string)
-
 def automatic_violations_check_no_extension(browser, website, args):
     # check automatic violations
-    consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=True)
-    consent_string_violations(website, consent_string, origin="direct", before_user_action=True)
-    for consent_string in consent_strings_postmessage:
-        consent_string_violations(website, consent_string, origin="postmessage", before_user_action=True)
+    if website.iab_banner:
+        consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=True)
+        consent_string_violations(website, consent_string, origin="direct", before_user_action=True, v2=False)
+        for consent_string in consent_strings_postmessage:
+            consent_string_violations(website, consent_string, origin="postmessage", before_user_action=True)
+    if website.tcfv2:
+        consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=True, v2=True)
+        consent_string_violations(website, consent_string, origin="direct", before_user_action=True, v2=True)
+        for consent_string in consent_strings_postmessage:
+            consent_string_violations(website, consent_string, origin="postmessage", before_user_action=True)
 
-def get_shared_cookie(browser, website, logs=None):
+def get_shared_cookie(browser, website, logs=None, v2=False):
     if logs is None:
         logs = browser.get_log('browser')
     for entry in logs:
-        cookie = get_info(entry, re_euconsent, "")
+        if not v2:
+            cookie = get_info(entry, re_euconsent, "")
+        else:
+            cookie = get_info(entry, re_euconsent_v2, "")
         if cookie is not None and len(cookie) > 0:
-            print("Shared cookie found!")
+            if v2:
+                print("Shared cookie found! (v2)")
+            else:
+                print("Shared cookie found!")
             return cookie
-    print("Shared cookie not found.")
+    if v2:
+        print("Shared cookie not found (v2).")
+    else:
+        print("Shared cookie not found.")
     return None
 
 def headful_violations_check(browser, website, args, refusal):
@@ -627,28 +699,37 @@ def headful_violations_check(browser, website, args, refusal):
         website.violation_broken_banner = True
     time.sleep(SLEEP_TIME_COOKIE_WAIT)
     shared_cookie = get_shared_cookie(browser, website)
+    shared_cookie_v2 = get_shared_cookie(browser, website, v2=True)
     tracking_accepted = not refusal and not website.violation_no_option and not website.violation_no_banner and not website.violation_broken_banner
-    if shared_cookie is not None:
+    if shared_cookie is not None and shared_cookie_v2 is not None:
         website.shared_cookie_set = True
         if tracking_accepted:
             website.shared_cookie_set_acceptance = True
         else:
             website.shared_cookie_set_refusal = True
-        consent_string_violations(website, shared_cookie, origin="cookie", before_user_action=False, tracking_accepted=tracking_accepted)
-    raw_consent_string, consent_strings_postmessage = get_consent_string(browser, website)
-    if raw_consent_string is not None:
-        consent_string_violations(website, raw_consent_string, origin="direct", before_user_action=False, tracking_accepted=tracking_accepted)
-    for raw_consent_string in consent_strings_postmessage:
-        consent_string_violations(website, raw_consent_string, origin="postmessage", before_user_action=False, tracking_accepted=tracking_accepted)
+        consent_string_violations(website, shared_cookie, origin="cookie", before_user_action=False, tracking_accepted=tracking_accepted, v2=False)
+        consent_string_violations(website, shared_cookie_v2, origin="cookie", before_user_action=False, tracking_accepted=tracking_accepted, v2=True)
+    if website.iab_banner:
+        raw_consent_string, consent_strings_postmessage = get_consent_string(browser, website)
+        if raw_consent_string is not None:
+            consent_string_violations(website, raw_consent_string, origin="direct", before_user_action=False, tracking_accepted=tracking_accepted)
+            for raw_consent_string in consent_strings_postmessage:
+                consent_string_violations(website, raw_consent_string, origin="postmessage", before_user_action=False, tracking_accepted=tracking_accepted)
+    if website.tcfv2:
+        raw_consent_string, consent_strings_postmessage = get_consent_string(browser, website, v2=True)
+        if raw_consent_string is not None:
+            consent_string_violations(website, raw_consent_string, origin="direct", before_user_action=False, tracking_accepted=tracking_accepted, v2=True)
+            for raw_consent_string in consent_strings_postmessage:
+                consent_string_violations(website, raw_consent_string, origin="postmessage", before_user_action=False, tracking_accepted=tracking_accepted, v2=True)
 
-def post_reload_violations_check(browser, website):
+def post_reload_violations_check(browser, website, v2=False):
     seen_consent_strings = {"direct": set(), "postmessage": set(), "GET": set(), "POST": set(), "cookie": set()}
-    (all_domains, domains_other) = get_through_logs_for_violations(browser, website, seen_consent_strings, try_getting_consent_string=True)
+    (all_domains, domains_other) = get_through_logs_for_violations(browser, website, seen_consent_strings, try_getting_consent_string=True, v2=v2)
     add_trackers(website, all_domains)
     for origin in seen_consent_strings:
         for consent_string in seen_consent_strings[origin]:
             if consent_string is not None:
-                consent_string_violations(website, consent_string, origin=origin, before_user_action=False)
+                consent_string_violations(website, consent_string, origin=origin, before_user_action=False, v2=v2)
 
 def vendors_violations_check(browser, website, args):
     time.sleep(SLEEP_TIME_GET_LOGS)
@@ -686,9 +767,9 @@ def extract_from_json(json_object, string):
     else:
         return None
 
-def vendors_passive_violations_check(browser, website, domains_direct):
+def vendors_passive_violations_check(browser, website, domains_direct, v2=False):
     seen_consent_strings = {"direct": set(), "postmessage": set(), "GET": set(), "POST": set(), "cookie": set()}
-    (all_domains, domains_other) = get_through_logs_for_violations(browser, website, seen_consent_strings)
+    (all_domains, domains_other) = get_through_logs_for_violations(browser, website, seen_consent_strings, v2)
     # Now that we gathered all domains checking for consent, we can merge them
     # and verify related violations
     domains_checking_consent = domains_direct["direct"]
@@ -697,9 +778,9 @@ def vendors_passive_violations_check(browser, website, domains_direct):
     check_violation_vendors_1_3(website, domains_checking_consent, all_domains)
     for origin in seen_consent_strings:
         for consent_string in seen_consent_strings[origin]:
-            consent_string_violations(website, consent_string, origin=origin, before_user_action=True)
+            consent_string_violations(website, consent_string, origin=origin, before_user_action=True, v2=v2)
 
-def get_through_logs_for_violations(browser, website, seen_consent_strings, try_getting_consent_string=False):
+def get_through_logs_for_violations(browser, website, seen_consent_strings, try_getting_consent_string=False, v2=False):
     # Test case (postmessages) : www.cotemaison.fr (lots of postmessages)
     # Test case (URL-based, GET) : lepoint.fr
     # Test case (URL-based, POST) : lepoint.fr
@@ -710,15 +791,18 @@ def get_through_logs_for_violations(browser, website, seen_consent_strings, try_
     domains = {"postmessage": set(), "get": set(), "post": set()}
     all_domains = set()
     if try_getting_consent_string:
-        call_cmp_to_get_consent_string(browser)
+        if not v2:
+            call_cmp_to_get_consent_string(browser)
+        else:
+            call_tcfapi_to_get_consent_string(browser)
     # Some doc: https://github.com/SeleniumHQ/selenium/wiki/Logging
     logs = browser.get_log('browser')
-    cookie = get_shared_cookie(browser, website, logs=logs)
+    cookie = get_shared_cookie(browser, website, logs=logs, v2=v2)
     if cookie is not None:
         seen_consent_strings["cookie"].add(cookie)
         website.shared_cookie_set = True
     if try_getting_consent_string:
-        consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=False, logs=logs)
+        consent_string, consent_strings_postmessage = get_consent_string(browser, website, normal=False, logs=logs, v2=v2)
         seen_consent_strings["direct"].add(consent_string)
         for consent_string in consent_strings_postmessage:
             seen_consent_strings["postmessage"].add(consent_string)

@@ -1,3 +1,6 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 const process = require('process');
 const { ConsentString } = require('consent-string');
 

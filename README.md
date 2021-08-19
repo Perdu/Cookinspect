@@ -2,7 +2,9 @@
 
 Selenium-based crawler used to find violations in cookie banners of IAB Europe's Transparency &amp; Consent Framework
 
-Update September 2020: CMPs switched to TCFv2 in August 2020. This script only handles TCFv1 and is therefore obsolete unless it's adapted to the new TCF version (contact me if interested).
+Update August 2021: TCFv2 support uploaded to this repository.
+
+~~ Update September 2020: CMPs switched to TCFv2 in August 2020. This script only handles TCFv1 and is therefore obsolete unless it's adapted to the new TCF version (contact me if interested). ~~
 
 ## Introduction
 
@@ -85,6 +87,6 @@ It runs the automatic crawl by default.
 This tool takes a lot of inputs from the targeted website and has not been built with security in mind. Someone reading this code COULD exploit it. Please do not run outside a safe environment, e.g. at least a separate unix user having no right on your system.
 
 ## Additional notes
-Stage: completed project (2019). TCFv2 support might be added later.
+Stage: completed project (2019). TCFv2 support added in August 2021.
 
 This was an experimental single-developer research project. Direction changed several times during development, so please be very tolerant with code quality.

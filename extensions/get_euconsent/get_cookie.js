@@ -17,7 +17,24 @@ function getCookie(tabs) {
 	if (cookies.length > 0) {
 	    for(i = 0; i < cookies.length; i++) {
 		if (cookies[i].domain == '.consensu.org') {
-		    api.tabs.sendMessage(tabs[0].id, {sc_cookie: cookies[i].value})
+		    api.tabs.sendMessage(tabs[0].id, {sc_cookie: cookies[i].value, version: 1})
+		}
+	    }
+	}
+	//}
+    });
+    // v2
+    api.cookies.getAll({
+	url: undefined,
+	name: 'euconsent-v2'
+	//domain: '.consensu.org'
+    }, function (cookies) {
+	//if (cookies.length > 0) {
+	console.log("sc-cookies-v2-vue:", cookies, "url:", tabs[0].url);
+	if (cookies.length > 0) {
+	    for(i = 0; i < cookies.length; i++) {
+		if (cookies[i].domain == '.consensu.org') {
+		    api.tabs.sendMessage(tabs[0].id, {sc_cookie: cookies[i].value, version: 2})
 		}
 	    }
 	}
